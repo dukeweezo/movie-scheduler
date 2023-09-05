@@ -1,0 +1,17 @@
+@import "tailwindcss/base";
+@import "tailwindcss/components";
+@import "tailwindcss/utilities";
+
+@layer components {
+  .grid-item {
+    @apply border-solid border border-[#2e2e2e]
+  }
+ 
+  .grid-item-subtle {
+  	@apply border-solid border border-[#212121]
+  }
+
+    /* ... */
+}
+
+/* This file is for your main application CSS */

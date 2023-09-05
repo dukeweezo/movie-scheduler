@@ -1,0 +1,554 @@
+defmodule MovieSchedulerWeb.Live do
+  use MovieSchedulerWeb, :live_view
+  use Timex
+
+  #@time_in_24_hr_clock __MODULE__.hello()
+
+  #__MODULE__.hello()
+
+  def render(assigns) do
+    #assigns[:assets] |> dbg
+    #assigns[:grids] |> dbg
+
+    ~H"""
+      <div id="moviescheduler" phx-hook="MovieScheduler">
+        <div style="background-color: gold" class="grid grid-cols-1 grid-rows-49 gap-0 w-1/12 float-left">
+          <div style="background-color: gold" class="sticky top-0 grid-item col-start-1 row-start-1">&nbsp;</div>
+          <div :for={{time, i} <- Enum.with_index(@time_range)} class={"grid-item col-start-1 row-start-#{i+2}"}>
+            <%= time %>
+          </div>
+        </div>
+
+        <div style="background-color: grey" class="grid grid-rows-49 grid-flow-col-dense ">
+          <div class="contents">
+            <div style="background-color: grey" :for={{{shorthand_name, formatted_date}, i} <- Enum.with_index(@dates)} class={"sticky top-0 grid-item col-start-#{i+1} row-start-1"}>
+              <%= shorthand_name %>
+              <%= formatted_date %>
+            </div>
+          </div>
+
+          <div id="scheduler-main" class="contents">
+            <%= for {id, x, y, length, schedule_id, asset_id, relative_row_id} <- @grids do %>
+              <div data-gridid={id} data-x={x} data-y={y} data-scheduleid={schedule_id} data-assetid={asset_id} data-relativerowid={relative_row_id} style={"grid-row: span #{length} !important"} class={"grid-item-subtle col-start-#{x} row-start-#{y+1} row-span-#{length}"}>
+                <%= "#{x} #{y}" %>
+              </div>
+            <% end %>
+          </div>
+
+
+          <div class="contents">
+
+            <div style="background-color: silver" class="grid h-screen col-start-6 row-start-1 row-span-full sticky top-0">
+              
+              <div :for={{asset, i} <- Enum.with_index(@assets)} 
+                class={"grid-item"}
+                phx-click={JS.push("grab_asset", loading: ".thermo")}
+                phx-value-assetid={i} 
+                phx-value-length={asset[:length]}
+              >
+                <%= asset.description %>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    """
+  end
+
+  def handle_event("grab_asset", params, socket) do
+    %{"assetid" => asset_id, 
+      "length" => length} = params
+
+    {:noreply, push_event(socket, "phx:grab_asset", %{asset_id: asset_id, length: length})}
+  end
+
+  def handle_event("js:test", params, socket) do
+    
+    %{
+      "grid_id" => target_id,
+      "length" => length,
+      "schedule_id" => schedule_id,
+      "x" => x,
+      "y" => y,
+      "relative_row_id" => relative_row_id
+    } = params
+
+    length = String.to_integer(length)
+    target_id = String.to_integer(target_id)
+    schedule_id = String.to_integer(schedule_id)
+    relative_row_id = String.to_integer(relative_row_id)
+
+    dbg schedule_id
+    dbg target_id
+    dbg length
+    dbg relative_row_id
+
+
+    update_schedule(schedule_id, %{"time" => relative_row_id, "length" => length})
+
+    empty_grids = generate_empty_grids()
+
+    {grids, _} = 
+      get_schedules_x_days_out(4)
+      |> combine_grids(empty_grids)
+
+
+    """
+
+    {_, new_x, new_y, old_length, schedule_id, asset_id} = 
+      Enum.find(socket.assigns.grids, fn 
+        {^target_id, _, _, _, _, _} ->
+          true
+        _ -> false 
+      end)
+
+    ids_to_reject = for n <- target_id..target_id+length-1, do: n
+
+    grids =
+      Enum.map(socket.assigns.grids, fn 
+        grid -> 
+          id_to_check =
+            case grid do
+              {id_to_check, _, _, _, _, _} -> 
+                id_to_check
+              _ ->
+                nil
+            end
+
+          if id_to_check in ids_to_reject, do: {}, else: grid
+      end)
+      |> List.replace_at(target_id-1, {target_id, new_x, new_y, length, schedule_id, asset_id})
+
+    """
+
+
+    {:noreply, 
+      socket
+      |> assign(:grids, grids)
+    }
+
+  end
+
+  def handle_event("js:place_asset", params, socket) do
+    dbg "place asset"
+
+    %{
+      "grid_id" => target_id,
+      "length" => length,
+      "schedule_id" => schedule_id,
+      "x" => x,
+      "y" => y
+    } = params
+
+    length = String.to_integer(length)
+
+    target_id = String.to_integer(target_id)
+    #target_id_plus_one = target_id + 1
+    #target_id_minus_one = target_id - 1
+
+    {_, new_x, new_y, old_length} = 
+      Enum.find(socket.assigns.grids, fn 
+        {^target_id, _, _, _} ->
+          true
+        _ -> false 
+      end)
+
+    """
+
+    nu_grids = 
+      Enum.reduce_while(socket.assigns.grids, [{asset_grid, 0}], fn
+        {id, x, y, new_length}, acc ->
+          {{_, _, _, _}, incrementor} = List.last(acc)
+
+          if incrementor < length do
+            {:cont, [{{id+incrementor, x, y, length}, incrementor+1} | acc]}
+          else 
+            dbg("halt")
+            {:halt, acc}
+          end
+      end)
+      |> Enum.reverse
+    dbg nu_grids
+    """
+    """
+    grids_to_remove =
+      for n <- 0..length do
+        {new_id+n, new_x, new_y, old_length}
+      end
+    """
+
+    #dbg grids_to_remove
+
+    #dbg for n <- target_id..target_id+length-1, do: n
+
+    dbg socket.assigns.grids
+
+    ids_to_reject = for n <- target_id..target_id+length-1, do: n
+
+    grids =
+      Enum.map(socket.assigns.grids, fn 
+        grid -> 
+          id_to_check =
+            case grid do
+              {id_to_check, _, _, _} -> 
+                id_to_check
+              _ ->
+                nil
+            end
+
+          if id_to_check in ids_to_reject, do: {}, else: grid
+      end)
+      |> List.replace_at(target_id-1, {target_id, new_x, new_y, length})
+
+    #dbg grids
+
+    """
+
+    grids =
+      Enum.reject(socket.assigns.grids, fn 
+        {^target_id, _, _, _} ->
+          true
+        {^target_id_plus_one, _, _, _} ->
+          true
+        {^target_id_minus_one, _, _, _} ->
+          true
+        _ -> 
+          false
+      end)
+      |> List.insert_at(target_id_minus_one-1, asset_grid)
+
+    """
+
+    {:noreply, 
+      socket
+      |> assign(:grids, grids)}
+  end
+
+  defp generate_grids() do
+    for x <- 1..50 do
+      x
+    end
+  end
+
+  defp combine_grids(db_grids, empty_grids) do
+
+    {sorted_grids, _} =
+      Enum.flat_map_reduce(db_grids, 0, fn 
+        schedule, acc ->
+          #dbg db_grids
+          new_grids =
+            for n <- 1..48 do
+              case Map.fetch(schedule, "#{n}") do 
+                {:ok, value} ->
+                  {(acc * 48) + 1, value, {schedule["id"], n}}
+                _ ->
+                  {nil, acc}
+              end
+            end
+
+          {new_grids, acc + 1}
+      end)
+
+    #dbg sorted_grids
+
+    """
+    sorted_grids =
+      Enum.flat_map(db_grids, fn
+        {key, value} ->
+          if key in (for n <- 1..48, do: n) do
+            
+          end
+          for n <- 1..48 do
+            grids[n]
+          end
+      end)
+    """
+
+    Enum.map_reduce(empty_grids, 0, fn 
+      {grid_id, x, y, length}, acc ->
+        fetched_grid = Enum.fetch!(sorted_grids, acc)
+        
+        if fetched_grid !== nil do
+          {_, values, {new_schedule_id, relative_row_id}} = fetched_grid
+
+          case values do
+            %{"empty" => true} ->
+              {{grid_id, x, y, length, nil, nil, relative_row_id}, acc + 1}
+
+            values when map_size(values) == 0 ->
+              {{}, acc + 1}
+
+            _ ->
+              %{"length" => new_length} = values
+              {{grid_id, x, y, new_length, new_schedule_id, nil, relative_row_id}, acc + 1}
+          end
+          
+        else
+          {{grid_id, x, y, length, nil, nil, nil}, acc + 1}
+        end
+      {}, acc ->
+        {{}, acc + 1}
+    end)
+  end
+
+  defp combine_grids(db_grids, empty_grids) do
+    # TODO: test one hour - one day different length
+    # plus correct # empty %{}
+
+
+    """
+      # db_grids %{"21" => %{}, "1" => %{}, ...}
+      sorted_grids =
+        Enum.flat_map(db_grids, fn ->
+          %{"grids" => grids} ->
+            for n <- 1..48 do
+              grids[n]
+            end
+        end)
+      # sorted_grids [%{}, ]
+      # then into map_reduce
+    """
+
+    flattened_grids =
+      Enum.flat_map(db_grids, fn 
+        %{"grids" => grids} ->     
+          grids
+      end)
+
+    Enum.map_reduce(empty_grids, 0, fn 
+      {grid_id, x, y, length}, acc ->
+        fetched_grid = Enum.fetch!(flattened_grids, acc)
+        
+        if fetched_grid !== %{} do
+          %{"length" => new_length} = fetched_grid
+
+          new_length |> dbg
+
+          {{grid_id, x, y, new_length}, acc + 1}
+        else
+          {{}, acc + 1}
+        end
+      {}, acc ->
+        {{}, acc + 1}
+    end)
+  end
+"""
+  defp combine_grids(grids_array, empty_grids) do
+    flattened_grids_array =
+      Enum.flat_map(grids_array, fn 
+        %{"grids" => grids} ->     
+          grids
+      end)
+
+    Enum.map_reduce(empty_grids, 0, fn 
+      {id, x, y, length}, acc ->
+        fetched_grid = Enum.fetch!(flattened_grids_array, acc)
+        
+        if fetched_grid !== %{} do
+          %{id: new_id, x: new_x, y: new_y, length: new_length} = fetched_grid
+
+          {{new_id, new_x, new_y, new_length}, acc + 1}
+        else
+          {{id, x, y, length}, acc + 1}
+        end
+      {}, acc ->
+        {{}, acc + 1}
+    end)
+
+  end
+"""
+
+  defp generate_empty_grids() do
+    {result, _} = 
+      for x <- 1..5, y <- 1..48 do
+        {x, y, 1}
+      end
+      |> Enum.map_reduce(1, fn 
+        {x, y, length}, acc ->
+          {{acc, x, y, length}, acc + 1}
+      end)
+
+    result
+  end
+
+  defp assets() do
+    for n <- 1..5 do
+      %{:id => n, :description => "Asset #{n}", :length => "4"}
+    end
+  end
+
+  defp generate_dates(start_date \\ Timex.today() |> Timex.day()) when 1 < start_date and start_date < 365 do
+    {dates, _} =
+      Enum.map_reduce(1..5, start_date, fn 
+        n, acc ->
+          date = Timex.from_iso_day(acc)
+          
+          shorthand_name =
+            date
+            |> Timex.weekday
+            |> Timex.day_shortname
+
+          formatted_date =
+            Timex.format!(date, "{M}/{D}")
+
+          {{shorthand_name, formatted_date}, acc + 1}
+      end)
+
+    dates
+  end
+
+  defp generate_24_hr_clock_time() do
+    for n <- 1..48 do 
+      is_even? = rem(n, 2) == 0
+      is_odd? = rem(n, 2) != 0
+
+      cond do
+        n < 20 and is_even? ->
+          "0#{round(n/2)}"
+        is_even? ->
+          "#{round(n/2)}"
+        n < 20 and is_odd? ->
+          "0#{trunc(n/2)}"
+        is_odd? ->
+           "#{trunc(n/2)}"
+        true -> "" # Logger.warn(); Should never get here
+      end
+      <>
+      if is_even? do
+        ":00"
+      else
+        ":30"
+      end
+    end
+  end
+
+  """
+      <br/>
+      <br/>
+      <br/>
+      <br/>
+      <br/>
+      <br/>
+      <br/>
+      <br/>
+      <br/>
+      <br/>
+      <br/>
+      <br/>
+      <br/>
+      <br/>
+      <br/>
+      <br/>
+      <div class="grid-item grid grid-rows-12 grid-cols-6 gap-0 ">
+        <div class="grid-item col-start-1 row-start-1 row-span-12">01</div>
+     
+        <div class="grid-item col-start-2 row-start-1 row-span-1 col-span-1">03</div>
+        <div class="grid-item col-start-2 row-start-2 row-span-1 col-span-1">03</div>
+        <div class="grid-item col-start-2 row-start-3 row-span-1 col-span-1">03</div>
+        <div class="grid-item col-start-2 row-start-4 row-span-1 col-span-1">03</div>
+        <div class="grid-item col-start-2 row-start-5 row-span-1 col-span-1">03</div>
+        <div class="grid-item col-start-2 row-start-6 row-span-1 col-span-1">03</div>
+        <div class="grid-item col-start-2 row-start-7 row-span-1 col-span-1">03</div>
+        <div class="grid-item col-start-2 row-start-8 row-span-1 col-span-1">03</div>
+        <div class="grid-item col-start-2 row-start-9 row-span-1 col-span-1">03</div>
+        <div class="grid-item col-start-2 row-start-10 row-span-1 col-span-1">03</div>
+        <div class="grid-item col-start-2 row-start-11 row-span-1 col-span-1">03</div>
+        <div class="grid-item col-start-2 row-start-12 row-span-1 col-span-1">03</div>
+        
+      </div>
+          
+    """
+
+  defp concat_and_flatten_grids(grids) do 
+    Enum.flat_map(grids, fn 
+      %{"grids" => grids} ->     
+        grids
+    end)
+
+
+  end
+
+  defp update_schedule(id, values) do
+    payload = Poison.encode!(values)
+
+    headers = %{"Content-Type" => "application/json"}
+
+    case MovieSchedulerWeb.API.put("/schedules/#{id}", payload, [{"Accept", "application/json"}]) do
+      {:ok, %{status_code: 200, body: body}} ->
+        body
+      _ ->
+        [] # Error
+    end
+  end
+
+
+  defp create_schedule(values) do
+    payload = Poison.encode!(values)
+
+    headers = %{"Content-Type" => "application/json"}
+
+    case MovieSchedulerWeb.API.post("/schedules/", payload, [{"Accept", "application/json"}]) do
+      {:ok, %{status_code: 200, body: body}} ->
+        body
+      _ ->
+        [] # Error
+    end
+  end
+
+  defp get_schedules_x_days_out(x \\ 4) do
+    case MovieSchedulerWeb.API.get("/schedules/?action=list_schedules_x_days_out&value=#{x}") do
+      {:ok, %{status_code: 200, body: body}} ->
+        body
+      _ ->
+        [] # Error
+    end
+  end
+
+
+  defp get_schedules() do
+    case MovieSchedulerWeb.API.get("/schedules/") do
+      {:ok, %{status_code: 200, body: body}} ->
+        body
+      _ ->
+        [] # Error
+    end
+  end
+
+
+  def mount(_params, session, socket) do
+    #dbg get_schedules_x_days_out(4)
+
+    #update_schedule(62, %{"time" => 5, "length" => 4})
+
+    #update_schedule(67, %{"time" => 5, "length" => 6})
+
+    #dbg update_schedule(67, %{"time" => 4, "length" => 6})
+
+    #update_schedule(71, %{"time" => 8, "length" => 1})
+
+
+    empty_grids = generate_empty_grids()
+
+    {grids, _} = 
+      get_schedules_x_days_out(4)
+      |> combine_grids(empty_grids)
+
+
+    #dbg Enum.slice(grids, 90..120)
+
+    default_dates = generate_dates()
+
+    default_time_range =
+      generate_24_hr_clock_time()
+
+    {:ok,
+      socket
+      |> assign(:time_range, default_time_range)
+      |> assign(:dates, default_dates)
+      |> assign(:assets, assets())
+      |> assign(:grids, grids),
+      #temporary_assigns: [grids: []]
+    }
+  end
+
+end

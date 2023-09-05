@@ -1,0 +1,150 @@
+defmodule MovieSchedulerWeb.Live do
+  use MovieSchedulerWeb, :live_view
+  use Timex
+  import MovieSchedulerWeb.Utilities
+  import MovieSchedulerWeb.APICalls
+
+  def render(assigns) do
+    #dbg assigns[:assets]
+
+    ~H"""
+      <div id="moviescheduler" phx-hook="MovieScheduler">
+        <div style="background-color: gold" class="grid grid-cols-1 grid-rows-49 gap-0 w-1/12 float-left">
+          <div style="background-color: gold" class="sticky top-0 grid-item col-start-1 row-start-1">&nbsp;</div>
+          <div :for={{time, i} <- Enum.with_index(@time_range)} class={"grid-item col-start-1 row-start-#{i+2}"}>
+            <%= time %>
+          </div>
+        </div>
+
+        <div style="background-color: grey" class="grid grid-rows-49 grid-flow-col-dense ">
+          <div class="contents">
+            <div style="background-color: grey" :for={{{shorthand_name, formatted_date}, i} <- Enum.with_index(@dates)} class={"sticky top-0 grid-item col-start-#{i+1} row-start-1"}>
+              <%= shorthand_name %>
+              <%= formatted_date %>
+            </div>
+          </div>
+
+          <div id="scheduler-main" class="contents">
+            <%= for %{grid_id: grid_id, x: x, y: y, asset: asset,
+                     length: length, schedule_id: schedule_id, 
+                     asset_id: asset_id, relative_row_id: relative_row_id} <- @grids do %>
+
+              <div data-gridid={grid_id} data-x={x} data-y={y} data-scheduleid={schedule_id} data-assetid={asset_id} data-relativerowid={relative_row_id} style={"grid-row: span #{length} !important"} class={"grid-item-subtle col-start-#{x} row-start-#{y+1} row-span-#{length}"}>
+                <div class="relative w-100 p-0 m-0">
+                  <div phx-value-scheduleid={schedule_id} phx-value-relativerowid={relative_row_id} phx-click="remove_scheduled_program" class="absolute top-1 right-2">x</div>
+                </div>
+
+                <%= if asset do %>
+                  <div class="p-2 text-xs w-20">
+                    <%= asset["title"] %>
+                  </div>
+                <% end %>
+                
+                <%= "#{x} #{y}" %>
+              </div>
+
+            <% end %>
+          </div>
+
+          <div class="contents">
+
+            <div style="background-color: silver" class="grid h-screen col-start-6 row-start-1 row-span-full sticky top-0">
+              <%= for asset <- @assets do %>
+                <div
+                  class={"grid-item"}
+                  phx-click={JS.push("grab_asset", loading: ".thermo")}
+                  phx-value-assetid={asset["id"]} 
+                  phx-value-length={asset["duration"]}
+                >
+                  <div class="p-2 text-xs w-20">
+                    <%= asset["title"] %>
+                  </div>
+
+                  <div class="p-2 text-xs w-20">
+                    ~<%= asset["formatted_length"] %> hrs
+                  </div>
+
+                </div>
+              <% end %>
+            </div>
+          </div>
+        </div>
+      </div>
+    """
+  end
+
+  def handle_event("remove_scheduled_program", params, socket) do
+    %{"relativerowid" => relative_row_id, 
+      "scheduleid" => schedule_id} = params
+
+    relative_row_id = String.to_integer(relative_row_id)
+    schedule_id = String.to_integer(schedule_id)
+
+    update_schedule(schedule_id, %{"time" => relative_row_id, "length" => 1, "asset_id" => nil})
+
+    grids = get_grids()
+
+    {:noreply, 
+      socket
+      |> assign(:grids, grids)
+    }
+  end
+
+  def handle_event("grab_asset", params, socket) do
+    %{
+      "assetid" => asset_id, 
+      "length" => length
+    } = params
+
+    {:noreply, push_event(socket, "phx:grab_asset", %{asset_id: asset_id, length: length})}
+  end
+
+  def handle_event("js:place_asset", params, socket) do
+
+    %{
+      "grid_id" => target_id,
+      "length" => length,
+      "schedule_id" => schedule_id,
+      "asset_id" => asset_id,
+      "x" => x,
+      "y" => y,
+      "relative_row_id" => relative_row_id
+    } = params
+
+    length = String.to_integer(length)
+    target_id = String.to_integer(target_id)
+    schedule_id = String.to_integer(schedule_id)
+    relative_row_id = String.to_integer(relative_row_id)
+    
+    update_schedule(schedule_id, %{"time" => relative_row_id, "length" => length, "asset_id" => asset_id})
+
+    grids = get_grids()
+
+    {:noreply, 
+      socket
+      |> assign(:grids, grids)
+    }
+  end
+
+
+  def mount(_params, session, socket) do
+    assets = Enum.slice(get_movies(), 0..4)
+
+    grids = get_grids()
+
+    default_dates = generate_dates()
+
+    default_time_range =
+      generate_24_hr_clock_time()
+
+    {:ok,
+      socket
+      |> assign(:time_range, default_time_range)
+      |> assign(:dates, default_dates)
+      |> assign(:assets, assets)
+      |> assign(:grids, grids),
+      #temporary_assigns: [grids: []]
+    }
+  end
+
+end
