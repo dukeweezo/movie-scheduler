@@ -4,6 +4,7 @@
 
   * LiveView, LiveComponents, and internal API for adding assets (movies) to single day.
   * Features 'grabbing', 'placing', 'removing' and 'get' (paginate through) asset actions.
+  * API endpoints at `/api_v1/schedules` and `/api_v1/movies`.
   * Additional movie details at `/movies/[asset_id]`.
   * Includes migratons, seeds, etc.
   * Currently deployed to [https://movie-scheduler.fly.dev/](https://movie-scheduler.fly.dev/).
