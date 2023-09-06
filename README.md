@@ -14,6 +14,12 @@ Have a go!
 
 ![alt text](https://github.com/dukeweezo/movie-scheduler/blob/master/github-assets/step_bros.gif?raw=true))
 
+Example AWS architecture for frontend
+![alt text](https://github.com/dukeweezo/movie-scheduler/blob/master/github-assets/architecture-1.png))
+
+Example AWS architecture for backend
+![alt text](https://github.com/dukeweezo/movie-scheduler/blob/master/github-assets/architecture-2.png))
+
 To start your Phoenix server:
 
   * Install dependencies with `mix deps.get`
