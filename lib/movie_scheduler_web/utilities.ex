@@ -188,6 +188,8 @@ defmodule MovieSchedulerWeb.Utilities do
 
   # See module docs.
   def create_intermediary_grids(sorted_grids) do
+    
+
     {intermediary_grids, _} =
       Enum.flat_map_reduce(sorted_grids, 0, fn 
         schedule, acc ->
@@ -213,7 +215,12 @@ defmodule MovieSchedulerWeb.Utilities do
     {combined_grids, _} =
       Enum.map_reduce(empty_grids, 0, fn 
         empty = %{grid_id: grid_id, x: x, y: y, length: length}, acc ->
-          fetched_grid = Enum.fetch!(sorted_intermediary_grids, acc)
+          fetched_grid =
+            case Enum.fetch(sorted_intermediary_grids, acc) do
+              {:ok, fetched_grid} ->
+                fetched_grid
+              _ -> nil
+            end
           
           if fetched_grid !== nil do
             {_, values, {new_schedule_id, relative_row_id}} = fetched_grid
